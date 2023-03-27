@@ -18,7 +18,6 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
-        console.log(id)
         const result = await db.query(`SELECT i.id, i.comp_code, i.amt, i.paid, i.add_date, i.paid_date, c.name, c.description 
         FROM invoices AS i JOIN companies AS c ON (i.comp_code = c.code) WHERE id = $1`, [id]);
         if (result.rows.length === 0) {
@@ -58,14 +57,25 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { amt } = req.body;
+        let { id } = req.params;
+        let { amt, paid } = req.body;
+        let paidDate = null;
 
-        const result = await db.query(`UPDATE invoices SET amt = $2 WHERE id= $1 
-            RETURNING id, comp_code, amt, paid, add_date, paid_date`, [id, amt]);
-        if (result.rows.length === 0) {
+        const currResult = await db.query(`SELECT paid FROM invoices WHERE id = $1`, [id]);
+        if (currResult.rows.length === 0) {
             throw new ExpressError(`Can't find invoice: ${id}`, 404)
         }
+        const currPaidDate = currResult.rows[0].paid_date;
+
+        if (!currPaidDate && paid) {
+            paidDate = new Date();
+        } else if (!paid) {
+            paidDate = null;
+        } else { paidDate = currPaidDate }
+
+        const result = await db.query(`UPDATE invoices SET amt = $2, paid = $3, paid_date = $4 WHERE id = $1 
+            RETURNING id, comp_code, amt, paid, add_date, paid_date`, [id, amt, paid, paidDate]);
+
         return res.json({ invoice: result.rows[0] })
     } catch (e) {
         return next(e);
@@ -77,7 +87,6 @@ router.delete('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await db.query(`DELETE FROM invoices WHERE id = $1`, [id])
-        console.log(result)
         if (result.rowCount === 0) {
             throw new ExpressError(`Can't find invoice: ${id}`, 404)
         }
